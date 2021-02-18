@@ -18,15 +18,14 @@
 
 const uint8_t channelPinA = 25;
 const uint8_t channelPinB = 26;
+int8_t QEM [16] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0};
+uint8_t old=0, new_value=0; 
+int8_t out;
 const byte button = 33;
 
-const int timeThreshold = 0;
-long timeCounter = 0;
 const int maxSteps = 1000;
 volatile int16_t ISRCounter = 0;
 int16_t counter = 0;
- 
-bool IsCW = true;
 
 //*************************
 //** MQTT CONFIGURATION ***
@@ -48,8 +47,7 @@ PubSubClient client(espClient); //The MQTT protocol will work with the connectio
 PIDCONTROL PID(12, 11, 0, 1,8);
 NiMOV HBRIDGE(AIN1,0, AIN2, 1,10000, 10,100);
 
-
-float pidData = 0, error = 0, elapsedTime = 0, pwmLeft = 0, pwmRight = 0, throttle = 150;
+float pidData = 0, error = 0, elapsedTime = 0;
 float desiredAngleS = 0;
 float currentPos=0;
 float pidConstants[]={0.0,0.0,0.0};
@@ -65,46 +63,17 @@ char msg[25]; //Character array to receive message
 void callback(char* topic, byte* payload, uint length);
 void reconnect();
 void setup_wifi();
-float mapFloat(float x, float in_min, float in_max, float out_min, float out_max);
 
-void doEncodeA()
+void ISRencoder()
 {
-   if (millis() > timeCounter + timeThreshold)
-   {
-      if (digitalRead(channelPinA) == digitalRead(channelPinB))
-      {
-         IsCW = true;
-         if (ISRCounter + 1 <= maxSteps) ISRCounter++;
-      }
-      else
-      {
-         IsCW = false;
-         if (ISRCounter - 1 >= -1*maxSteps) ISRCounter--;
-      }
-      timeCounter = millis();
-   }
+    old = new_value;
+    new_value = digitalRead (channelPinA) * 2 + digitalRead (channelPinB); // Convert binary input to decimal value
+    out = QEM [old * 4 + new_value];
+    ISRCounter = ISRCounter + out;
+    if (ISRCounter > maxSteps) ISRCounter=maxSteps;
+    if (ISRCounter < -1*maxSteps) ISRCounter=-1*maxSteps;
 }
  
-void doEncodeB()
-{
-   if (millis() > timeCounter + timeThreshold)
-   {
-      if (digitalRead(channelPinA) != digitalRead(channelPinB))
-      {
-         IsCW = true;
-         if (ISRCounter + 1 <= maxSteps) ISRCounter++;
-      }
-      else
-      {
-         IsCW = false;
-         if (ISRCounter - 1 > 0) ISRCounter--;
-      }
-      timeCounter = millis();
-   }
-}
-
-
-
 //************************
 //*******  SETUP  ********
 //************************
@@ -116,9 +85,8 @@ void setup() {
     pinMode(channelPinA, INPUT_PULLUP); 
     pinMode(channelPinB, INPUT_PULLUP); 
     pinMode(button, INPUT_PULLUP); 
-    attachInterrupt(digitalPinToInterrupt(channelPinA), doEncodeA, CHANGE);
-   attachInterrupt(digitalPinToInterrupt(channelPinB), doEncodeB, CHANGE);
-
+    attachInterrupt(digitalPinToInterrupt(channelPinA), ISRencoder, CHANGE);
+   attachInterrupt(digitalPinToInterrupt(channelPinB), ISRencoder, CHANGE);
 
     client.setServer(mqtt_server, mqtt_port); // MQTT Broker setup
     client.setCallback(callback); //Whenever a message arrives we call this fucntion
@@ -137,20 +105,14 @@ void loop() {
 
     error= currentPos - desiredAngleS;
     pidData = PID.Data(error);
-   
-        
     HBRIDGE.setSpeed(pidData);
     
-
-    if (counter != ISRCounter)
-    {
+    if (counter != ISRCounter){
         counter = ISRCounter;
-        currentPos=mapFloat(counter,0,926,0,360);
-        //Serial.print("An interrupt has occurred. Total: ");
+        currentPos=mapFloat(counter,0,909,0,360);
         //Serial.print("Count: ");
         //Serial.println(counter);
     }
-
 
     if(digitalRead(button)==LOW){
         Serial.print("Button pressed");
@@ -161,7 +123,6 @@ void loop() {
     long now = millis(); //this variable is useful to set a sample time
     if(now - lastMsg > SAMPLING_PERIOD){
         lastMsg = now;
-        //Serial.println(xPortGetCoreID());
         String msg_send = String(currentPos);
         msg_send.toCharArray(msg, 25);
 
@@ -177,6 +138,7 @@ void loop() {
 //*************************
 //*****WIFI CONNECTION*****
 //*************************
+
 void setup_wifi(){
     delay(10);
 
@@ -218,13 +180,11 @@ void callback(char* topic, byte* payload, uint length){
 
     String str_topic(topic);
     if(str_topic == serial_number + "/constants"){
-        
         parseString(incoming, ",", pidConstants);
         PID.changeConstants(pidConstants[0],pidConstants[1],pidConstants[2]);         
     }
     if(str_topic == serial_number + "/pos"){
-        desiredAngleS = incoming.toFloat();
-        
+        desiredAngleS = incoming.toFloat(); 
     }
 }
 
@@ -262,9 +222,3 @@ void reconnect(){
         }
     }
 }
-
-float mapFloat(float x, float in_min, float in_max, float out_min, float out_max)
-{
- return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-
