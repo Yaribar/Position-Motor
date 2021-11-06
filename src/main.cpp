@@ -33,13 +33,13 @@ int16_t counter = 0;
 
 const String serial_number = "123456789";
 
-const char* ssid = "bluetele9C32"; //WiFi Network
-const char* password = "2B6FF3E1"; //WiFi's password
+const char* ssid = ""; //WiFi Network
+const char* password = ""; //WiFi's password
 
-const char *mqtt_server = "c-iot.ml"; //Domain name or IP
+const char *mqtt_server = ""; //Domain name or IP
 const uint16_t mqtt_port = 1883; //MQTT port TCP
-const char *mqtt_user = "web_client"; //MQTT user
-const char *mqtt_pass = "121212"; //MQTT password
+const char *mqtt_user = ""; //MQTT user
+const char *mqtt_pass = ""; //MQTT password
 
 WiFiClient espClient; //Create an object WiFi to connect to internet
 PubSubClient client(espClient); //The MQTT protocol will work with the connection done through WiFi
